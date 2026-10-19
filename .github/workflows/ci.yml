@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  test:
+    # Tests exercise the binary/APK analyzers against real artifacts
+    # (C:\Windows\System32\notepad.exe) to catch false positives, so CI
+    # runs on Windows runners where that path exists.
+    runs-on: windows-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.11", "3.12"]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Install package + test deps
+        run: |
+          pip install -e .
+          pip install pytest
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+      - name: Smoke-test CLI
+        run: re-audit scan C:\Windows\System32\notepad.exe
+
+      - name: Smoke-test MCP server registers tools
+        run: |
+          python -c "from re_audit import mcp_server; tools = list(mcp_server.mcp._tool_manager._tools.keys()); print(tools); assert len(tools) == 6"

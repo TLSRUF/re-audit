@@ -1,0 +1,25 @@
+[project]
+name = "re-audit"
+version = "0.1.0"
+description = "Static reverse-engineering-assisted vulnerability triage CLI and MCP server, for files you own or are authorized to test."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "lief>=0.14",
+    "androguard>=4.1",
+    "click>=8.1",
+    "rich>=13.0",
+    "mcp>=1.0",
+]
+
+[project.scripts]
+re-audit = "re_audit.cli:main"
+re-audit-mcp = "re_audit.mcp_server:run"
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["re_audit*"]
