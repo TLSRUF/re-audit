@@ -6,6 +6,13 @@
 Static, reverse-engineering-assisted vulnerability triage, as a CLI **and**
 an MCP server so an AI agent (Claude Code, etc.) can drive it.
 
+**Why this instead of a Ghidra-based MCP server:** no Ghidra/Java install,
+no project database, no GUI to script against -- `pip install re-audit`
+and you get an answer in seconds. It trades Ghidra's full decompiler depth
+for being lightweight, scriptable, and CI-friendly; pair it with a
+Ghidra/radare2 MCP server for deep manual analysis when a finding here
+warrants it.
+
 It extracts strings, flags hardcoded-secret patterns, checks ELF/PE/Mach-O
 exploit mitigations, and audits Android APK manifests -- then hands back a
 single structured report with a `summary_findings` list.
