@@ -61,10 +61,18 @@ def _analyze_elf(binary: lief.ELF.Binary) -> MitigationReport:
         has_relro_segment = any(
             seg.type == lief.ELF.Segment.TYPE.GNU_RELRO for seg in binary.segments
         )
-        has_bind_now = False
-        dynamic_flags = binary.get(lief.ELF.DynamicEntry.TAG.FLAGS) if binary.has(lief.ELF.DynamicEntry.TAG.FLAGS) else None
-        if binary.has(lief.ELF.DynamicEntry.TAG.BIND_NOW) or binary.has(lief.ELF.DynamicEntry.TAG.FLAGS_1):
-            has_bind_now = True
+        # Full RELRO requires the GNU_RELRO segment *and* eager symbol
+        # binding (BIND_NOW). The presence of a DT_FLAGS/DT_FLAGS_1 entry
+        # does not by itself mean BIND_NOW -- that entry is also used for
+        # unrelated bits (e.g. DF_1_PIE). The actual NOW bit must be set,
+        # or the legacy boolean DT_BIND_NOW tag must be present.
+        has_bind_now = binary.has(lief.ELF.DynamicEntry.TAG.BIND_NOW)
+        if not has_bind_now and binary.has(lief.ELF.DynamicEntry.TAG.FLAGS):
+            flags = binary.get(lief.ELF.DynamicEntry.TAG.FLAGS)
+            has_bind_now = flags.has(lief.ELF.DynamicEntryFlags.FLAG.BIND_NOW)
+        if not has_bind_now and binary.has(lief.ELF.DynamicEntry.TAG.FLAGS_1):
+            flags1 = binary.get(lief.ELF.DynamicEntry.TAG.FLAGS_1)
+            has_bind_now = flags1.has(lief.ELF.DynamicEntryFlags.FLAG.NOW)
         if has_relro_segment and has_bind_now:
             report.relro = "full"
         elif has_relro_segment:
