@@ -10,7 +10,10 @@ dependencies = [
     "androguard>=4.1",
     "click>=8.1",
     "rich>=13.0",
-    "mcp>=1.0",
+    # mcp 2.0 renamed FastMCP -> MCPServer and changed other APIs; pinned
+    # to the 1.x line until re_audit/mcp_server.py is migrated (tracked as
+    # a follow-up, not urgent since 1.x is still published and working).
+    "mcp>=1.0,<2",
 ]
 
 [project.scripts]
