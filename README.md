@@ -1,5 +1,7 @@
 # re-audit
 
+**English** | [한국어](README.ko.md)
+
 [![CI](https://github.com/TLSRUF/re-audit/actions/workflows/ci.yml/badge.svg)](https://github.com/TLSRUF/re-audit/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![M8ven Score](https://m8ven.ai/badge/mcp/tlsruf-re-audit-ark0u6?v=485ca08589862abef831e98e8e11387b)](https://m8ven.ai/mcp/tlsruf-re-audit-ark0u6?s=readme)
