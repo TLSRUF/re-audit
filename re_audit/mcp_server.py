@@ -19,6 +19,7 @@ from .analyzers import binary as binary_analyzer
 from .analyzers import secrets as secrets_analyzer
 from .analyzers import strings_scan
 from .detect import detect_type
+from .limits import read_file_bounded
 
 mcp = FastMCP(
     "re-audit",
@@ -70,8 +71,7 @@ def detect_file_type(path: str) -> dict:
 def scan_strings(path: str, sample_size: int = 40) -> dict:
     """Extract printable strings from a file and classify URLs, IPs, paths, and risky API names."""
     resolved = _resolve(path)
-    with open(resolved, "rb") as f:
-        data = f.read()
+    data = read_file_bounded(resolved)
     return _asdict(strings_scan.analyze(data, sample_size=sample_size))
 
 
@@ -83,8 +83,7 @@ def scan_secrets(path: str) -> dict:
     verify manually before treating any match as a confirmed live secret.
     """
     resolved = _resolve(path)
-    with open(resolved, "rb") as f:
-        data = f.read()
+    data = read_file_bounded(resolved)
     text = "\n".join(strings_scan.extract_strings(data))
     return {
         "pattern_matches": [_asdict(f) for f in secrets_analyzer.scan_text(text)],

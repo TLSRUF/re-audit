@@ -53,8 +53,14 @@ def extract_strings(data: bytes, min_len: int = MIN_LEN) -> list[str]:
     return out
 
 
-def analyze(data: bytes, sample_size: int = 40) -> StringsReport:
-    strings = extract_strings(data)
+def analyze_strings(strings: list[str], sample_size: int = 40) -> StringsReport:
+    """Build a StringsReport from an already-extracted strings list.
+
+    Split out from analyze() so callers who also need the full strings
+    list for other analysis (e.g. report.py's secrets scan) can call
+    extract_strings() once and reuse it here, instead of re-running the
+    (regex-based, so non-trivial on a large file) extraction a second time.
+    """
     joined = "\n".join(strings)
 
     urls = sorted(set(URL_RE.findall(joined)))
@@ -71,3 +77,7 @@ def analyze(data: bytes, sample_size: int = 40) -> StringsReport:
         risky_symbols=risky,
         sample=strings[:sample_size],
     )
+
+
+def analyze(data: bytes, sample_size: int = 40) -> StringsReport:
+    return analyze_strings(extract_strings(data), sample_size=sample_size)

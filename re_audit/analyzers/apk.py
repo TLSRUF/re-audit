@@ -8,9 +8,47 @@ Static only -- does not install, launch, or instrument the app.
 from __future__ import annotations
 
 import logging
+import zipfile
 from dataclasses import dataclass, field
 
 from androguard.core.apk import APK
+
+from re_audit.limits import check_file_size
+
+# androguard/apkInspector decompress zip entries (e.g. AndroidManifest.xml)
+# with no size cap of their own, trusting the attacker-controlled
+# "uncompressed size" header field. A sub-2MB crafted APK can claim a
+# single huge entry and force that much memory to be allocated before
+# parsing even starts -- a classic zip-bomb, confirmed by a
+# security-audit-skill review (~1000x amplification, bounded by DEFLATE's
+# own ~1032:1 single-pass ceiling since androguard doesn't recurse into
+# nested archives). zipfile.ZipFile() here only reads the central
+# directory -- no decompression -- so this check is cheap even against a
+# hostile file.
+MAX_APK_ENTRY_UNCOMPRESSED_BYTES = 500 * 1024 * 1024  # 500 MB, generous for real APKs
+
+
+def _reject_zip_bomb(path: str) -> None:
+    try:
+        with zipfile.ZipFile(path) as zf:
+            total = 0
+            for info in zf.infolist():
+                if info.file_size > MAX_APK_ENTRY_UNCOMPRESSED_BYTES:
+                    raise ValueError(
+                        f"APK entry '{info.filename}' claims "
+                        f"{info.file_size:,} uncompressed bytes, over the "
+                        f"{MAX_APK_ENTRY_UNCOMPRESSED_BYTES:,}-byte per-entry "
+                        "limit -- refusing to decompress (possible zip bomb)."
+                    )
+                total += info.file_size
+                if total > MAX_APK_ENTRY_UNCOMPRESSED_BYTES:
+                    raise ValueError(
+                        f"This APK's entries sum to over "
+                        f"{MAX_APK_ENTRY_UNCOMPRESSED_BYTES:,} uncompressed "
+                        "bytes -- refusing to decompress (possible zip bomb)."
+                    )
+    except zipfile.BadZipFile as exc:
+        raise ValueError(f"'{path}' is not a valid zip/APK: {exc}") from exc
 
 # androguard uses loguru and defaults to very verbose DEBUG/INFO logging
 # (every AXML parser event). Silence it so CLI/MCP output stays readable;
@@ -63,6 +101,8 @@ class ApkReport:
 
 
 def analyze(path: str) -> ApkReport:
+    check_file_size(path)
+    _reject_zip_bomb(path)
     apk = APK(path)
 
     debuggable = bool(apk.get_attribute_value("application", "debuggable"))

@@ -11,6 +11,8 @@ from dataclasses import dataclass, field
 
 import lief
 
+from re_audit.limits import check_file_size
+
 RISKY_IMPORTS = {
     "strcpy", "strcat", "sprintf", "vsprintf", "gets", "scanf",
     "system", "popen", "exec", "execve", "execl", "execvp",
@@ -136,6 +138,7 @@ def _analyze_macho(binary: lief.MachO.Binary) -> MitigationReport:
 
 
 def analyze(path: str) -> BinaryReport:
+    check_file_size(path)
     binary = lief.parse(path)
     if binary is None:
         raise ValueError(f"LIEF could not parse '{path}' as ELF/PE/Mach-O")
@@ -164,7 +167,10 @@ def analyze(path: str) -> BinaryReport:
 
     risky_lower = {r.lower() for r in RISKY_IMPORTS}
     risky = sorted(i for i in imports if i.lower().lstrip("_") in risky_lower)
-    sections = [s.name for s in binary.sections] if hasattr(binary, "sections") else []
+    # Capped like imports/exports above: a legitimate binary could have a
+    # huge-but-real section count, and nothing should iterate an unbounded
+    # list just to render a report.
+    sections = [s.name for s in binary.sections][:500] if hasattr(binary, "sections") else []
 
     return BinaryReport(
         path=path,

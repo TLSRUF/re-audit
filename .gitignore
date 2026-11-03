@@ -6,3 +6,9 @@ build/
 dist/
 *.venv/
 venv/
+
+# Locally installed agent skills (e.g. `npx skills add ...`) -- these are
+# tooling used to develop/review this repo, not part of the project itself.
+.agents/
+.claude/
+skills-lock.json

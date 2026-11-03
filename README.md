@@ -123,6 +123,26 @@ mechanism. The scope decision is still yours.
   permissions, and exported activities/services/receivers/providers
   without `exported="false"`.
 
+## Robustness against adversarial input
+
+re-audit's whole job is parsing files you don't necessarily trust (CTF
+samples, real malware, hostile APKs), so a scan running on attacker-chosen
+bytes is the normal case, not an edge case. A [Cloudflare
+security-audit-skill](https://github.com/cloudflare/security-audit-skill)
+review of this repo found and fixed two concrete DoS vectors along those
+lines, both confirmed with real local measurements before the fix:
+
+- A ~50-byte crafted string could hang the secrets scanner for minutes
+  (ReDoS in a regex) -- fixed by rewriting it as a linear-time check.
+- A sub-2MB crafted APK could force ~1-2GB of memory via decompression-bomb
+  amplification in a dependency -- fixed with a header-only size check
+  before any entry is decompressed.
+
+As defense in depth, every entry point now enforces a file-size cap
+(`re_audit/limits.py`) and wraps regex-based scanning in a wall-clock
+timeout, so a future pathological pattern degrades to a clear error
+instead of a hang.
+
 ## Development
 
 ```bash

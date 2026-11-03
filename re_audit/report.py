@@ -10,6 +10,7 @@ from .analyzers import binary as binary_analyzer
 from .analyzers import secrets as secrets_analyzer
 from .analyzers import strings_scan
 from .detect import detect_type
+from .limits import read_file_bounded, run_with_timeout
 
 SCOPE_DISCLAIMER = (
     "This report is for static analysis of files you own or are explicitly "
@@ -32,7 +33,7 @@ def audit_file(path: str, max_strings_sample: int = 40) -> dict:
         raise FileNotFoundError(f"No such file: {path}")
 
     file_type = detect_type(str(p))
-    data = p.read_bytes()
+    data = read_file_bounded(str(p))
 
     report: dict[str, Any] = {
         "scope_disclaimer": SCOPE_DISCLAIMER,
@@ -43,13 +44,26 @@ def audit_file(path: str, max_strings_sample: int = 40) -> dict:
         "summary_findings": [],
     }
 
-    # Strings + secret scanning applies to every file type.
-    strings_report = strings_scan.analyze(data, sample_size=max_strings_sample)
+    # Strings + secret scanning applies to every file type. Extract once
+    # and reuse the list for both -- this used to call extract_strings()
+    # a second time from scratch here (once inside strings_scan.analyze,
+    # once more for the un-truncated join below), doubling extraction cost
+    # and holding two full copies of the data in memory at once.
+    all_strings = strings_scan.extract_strings(data)
+    strings_report = strings_scan.analyze_strings(all_strings, sample_size=max_strings_sample)
     report["sections"]["strings"] = _asdict(strings_report)
 
-    joined_text = "\n".join(strings_report.sample) if max_strings_sample >= strings_report.total_strings else "\n".join(strings_scan.extract_strings(data))
-    secret_findings = secrets_analyzer.scan_text(joined_text)
-    high_entropy = secrets_analyzer.scan_high_entropy_tokens(joined_text)
+    joined_text = "\n".join(all_strings)
+    # Regex-based scans over attacker-controlled content: wrap in a
+    # wall-clock timeout as a backstop (the known ReDoS patterns found by
+    # review are already fixed at the regex level, but this guards against
+    # any future pattern with the same flaw rather than hanging silently).
+    try:
+        secret_findings = run_with_timeout(secrets_analyzer.scan_text, joined_text)
+        high_entropy = run_with_timeout(secrets_analyzer.scan_high_entropy_tokens, joined_text)
+    except Exception as exc:
+        report["sections"]["secrets_error"] = str(exc)
+        secret_findings, high_entropy = [], []
     report["sections"]["secrets"] = {
         "pattern_matches": [_asdict(f) for f in secret_findings],
         "high_entropy_tokens": [_asdict(f) for f in high_entropy[:50]],

@@ -120,6 +120,25 @@ re-audit-mcp
   `debuggable`, `allowBackup`, `usesCleartextTraffic`, 위험 권한, 그리고
   `exported="false"`가 없는 exported activity/service/receiver/provider.
 
+## 악성 입력에 대한 견고성
+
+re-audit은 애초에 신뢰할 수 없는 파일(CTF 샘플, 실제 악성코드, 적대적인
+APK)을 분석하는 게 본업이라, 공격자가 고른 바이트를 스캔하는 게 예외가
+아니라 일반적인 상황입니다. [Cloudflare
+security-audit-skill](https://github.com/cloudflare/security-audit-skill)로
+이 저장소를 감사한 결과, 실제로 로컬에서 측정까지 확인된 구체적인 DoS
+취약점 2개를 찾아서 고쳤습니다:
+
+- 50바이트 정도의 크래프트된 문자열이 시크릿 스캐너를 몇 분간 멈추게
+  할 수 있었음 (정규식 ReDoS) -- 선형 시간 검사로 다시 작성해서 수정.
+- 2MB 이하의 크래프트된 APK가 의존성 라이브러리의 압축 해제 폭탄
+  증폭을 통해 1~2GB의 메모리를 강제로 할당시킬 수 있었음 -- 실제
+  압축 해제 전에 헤더만 보는 크기 체크를 추가해서 수정.
+
+방어 심화 차원에서, 모든 진입점이 이제 파일 크기 상한(`re_audit/limits.py`)을
+적용하고 정규식 기반 스캔을 wall-clock 타임아웃으로 감싸서, 앞으로 비슷한
+결함이 있는 패턴이 나와도 멈추는 대신 명확한 에러로 끝나도록 했습니다.
+
 ## 개발
 
 ```bash

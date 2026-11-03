@@ -14,6 +14,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import report as report_mod
+from .limits import read_file_bounded
 
 console = Console()
 
@@ -72,9 +73,13 @@ def scan(path: str, as_json: bool, out: str | None, html_out: str | None) -> Non
 def strings(path: str) -> None:
     """Extract and classify printable strings from PATH."""
     from .analyzers import strings_scan
+    from .limits import FileTooLargeError
 
-    with open(path, "rb") as f:
-        data = f.read()
+    try:
+        data = read_file_bounded(path)
+    except FileTooLargeError as exc:
+        console.print(f"[bold red]Error:[/] {exc}")
+        sys.exit(1)
     rep = strings_scan.analyze(data)
     console.print(f"Total strings: {rep.total_strings}")
     if rep.urls:
@@ -95,9 +100,13 @@ def secrets(path: str) -> None:
     """Scan PATH for hardcoded secret-like patterns."""
     from .analyzers import secrets as secrets_analyzer
     from .analyzers import strings_scan
+    from .limits import FileTooLargeError
 
-    with open(path, "rb") as f:
-        data = f.read()
+    try:
+        data = read_file_bounded(path)
+    except FileTooLargeError as exc:
+        console.print(f"[bold red]Error:[/] {exc}")
+        sys.exit(1)
     text = "\n".join(strings_scan.extract_strings(data))
     findings = secrets_analyzer.scan_text(text)
     high_entropy = secrets_analyzer.scan_high_entropy_tokens(text)

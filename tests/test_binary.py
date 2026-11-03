@@ -1,4 +1,7 @@
+import pytest
+
 from re_audit.analyzers import binary
+from re_audit.limits import FileTooLargeError
 
 NOTEPAD = r"C:\Windows\System32\notepad.exe"
 
@@ -27,3 +30,13 @@ def test_raises_on_non_binary_file(tmp_path):
         assert False, "expected ValueError for unparsable file"
     except ValueError:
         pass
+
+
+def test_enforces_file_size_cap_before_parsing(monkeypatch):
+    # binary.analyze() must check file size before handing the path to
+    # LIEF's native parser -- confirm the check actually runs by asserting
+    # it rejects notepad.exe once the cap is set below its real size,
+    # rather than building a multi-hundred-MB fixture just to test this.
+    monkeypatch.setattr(binary, "check_file_size", lambda path: (_ for _ in ()).throw(FileTooLargeError("too big (test)")))
+    with pytest.raises(FileTooLargeError):
+        binary.analyze(NOTEPAD)

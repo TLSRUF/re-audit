@@ -23,7 +23,12 @@ SECRET_PATTERNS: list[tuple[str, re.Pattern]] = [
     ("JWT", re.compile(r"eyJ[A-Za-z0-9_-]+\.eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+")),
     ("Generic password assignment", re.compile(r"(?i)(password|passwd|pwd)\s*[=:]\s*['\"][^'\"\s]{4,}['\"]")),
     ("Generic API key assignment", re.compile(r"(?i)(api[_-]?key|secret[_-]?key|access[_-]?token)\s*[=:]\s*['\"][^'\"\s]{8,}['\"]")),
-    ("Hardcoded DB connection string", re.compile(r"(?i)(mysql|postgres|postgresql|mongodb)://[^\s'\"]+:[^\s'\"@]+@[^\s'\"]+")),
+    # The first character class excludes ':' so it can't also match the
+    # literal that terminates it -- without that exclusion, two adjacent
+    # unbounded classes sharing a boundary character cause O(n^2)
+    # backtracking on a crafted no-'@' input (e.g. "mysql://" + ":" * n).
+    # See tests/test_secrets.py's ReDoS regression test.
+    ("Hardcoded DB connection string", re.compile(r"(?i)(mysql|postgres|postgresql|mongodb)://[^\s'\":]+:[^\s'\"@]+@[^\s'\"]+")),
     ("Slack Webhook", re.compile(r"https://hooks\.slack\.com/services/[A-Za-z0-9/]+")),
 ]
 
@@ -74,11 +79,39 @@ def scan_text(text: str, context_window: int = 24) -> list[SecretFinding]:
 
 
 _HAS_DIGIT = re.compile(r"\d")
-# Matches typical identifier casing like "WaitForSingleObjectEx" or
-# "K32GetModuleFileNameExW": words that start with an uppercase letter
-# followed by lowercase letters, chained together. Real secrets (base64,
-# hex, API keys) essentially never look like this.
-_CAMEL_CASE_IDENTIFIER = re.compile(r"^(?:[A-Z][a-z0-9]*|[0-9]+){2,}$")
+
+
+def _looks_like_camel_case_identifier(token: str) -> bool:
+    """True for tokens shaped like "WaitForSingleObjectEx" or
+    "K32GetModuleFileNameExW": 2+ "words", each an uppercase letter
+    followed by lowercase/digits, or a run of digits. Real secrets
+    (base64, hex, API keys) essentially never look like this.
+
+    This used to be the regex r"^(?:[A-Z][a-z0-9]*|[0-9]+){2,}$". That
+    pattern has two alternatives that can both consume digits, so on a
+    token like "A" + "1"*27 + "+" (which fails the overall match, since
+    '+' isn't in either branch's alphabet), the engine explores
+    exponentially many ways to split the digit run between iterations
+    before giving up -- a ~50-byte crafted string hangs for minutes.
+    Since re-audit's job is scanning attacker-controlled file content,
+    that's a real, trivially-triggerable DoS, not a theoretical one (see
+    tests/test_secrets.py's ReDoS regression test). This linear scan
+    matches the same shape with no backtracking.
+    """
+    i, n, words = 0, len(token), 0
+    while i < n:
+        c = token[i]
+        if c.isupper():
+            i += 1
+            while i < n and (token[i].islower() or token[i].isdigit()):
+                i += 1
+        elif c.isdigit():
+            while i < n and token[i].isdigit():
+                i += 1
+        else:
+            return False
+        words += 1
+    return words >= 2
 
 
 def scan_high_entropy_tokens(text: str, min_len: int = 24, threshold: float = 4.3) -> list[SecretFinding]:
@@ -94,7 +127,7 @@ def scan_high_entropy_tokens(text: str, min_len: int = 24, threshold: float = 4.
         token = m.group(0)
         if not _HAS_DIGIT.search(token):
             continue
-        if _CAMEL_CASE_IDENTIFIER.match(token):
+        if _looks_like_camel_case_identifier(token):
             continue
         ent = _shannon_entropy(token)
         if ent >= threshold:
